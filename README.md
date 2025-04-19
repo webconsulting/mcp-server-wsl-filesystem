@@ -105,6 +105,22 @@ Node.js server implementing Model Context Protocol (MCP) specifically designed f
   - Lists all available WSL distributions and shows which one is currently being used
   - No input required
 
+## Requirements
+
+- [Node.js](https://nodejs.org/en/download/) (v14.0.0 or higher)
+- [Windows Subsystem for Linux (WSL)](https://learn.microsoft.com/en-us/windows/wsl/install) properly configured
+- At least one Linux distribution installed in WSL
+- TypeScript (installed as a development dependency)
+
+### Installing Node.js on Windows
+
+1. Download the Windows installer from the [official Node.js website](https://nodejs.org/en/download/)
+2. Run the installer and follow the installation wizard
+3. Verify installation by opening Command Prompt and running:
+   ```bash
+   node --version
+   npm --version
+
 ## Usage
 
 Before running the server, you need to build the TypeScript project:
@@ -186,4 +202,4 @@ This fork adapts the original Filesystem MCP Server to work with WSL by:
 
 This project is a fork of the original [Filesystem MCP Server](https://github.com/modelcontextprotocol/servers/blob/main/src/filesystem) created by the Model Context Protocol team.
 
-This MCP server is licensed under the MIT License, following the original project's license. This means you are free to use, modify, and distribute the software, subject to the terms and conditions of the MIT License. For more details, please see the LICENSE file in the original project repository.
+This MCP server for WSL is licensed under the MIT License, following the original project's license. This means you are free to use, modify, and distribute the software, subject to the terms and conditions of the MIT License. For more details, please see the LICENSE file in the original project repository.
