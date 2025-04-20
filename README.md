@@ -1,3 +1,23 @@
+> **⚠️ IMPORTANT INFORMATION:** The original [Filesystem MCP Server](https://github.com/modelcontextprotocol/servers/tree/main/src/filesystem) can already access WSL files by simply using the network path `\\wsl.localhost\DistributionName` as a parameter in the configuration. Example:
+> ```json
+> {
+>   "mcpServers": {
+>     "filesystem": {
+>       "command": "npx",
+>       "args": [
+>         "-y",
+>         "@modelcontextprotocol/server-filesystem",
+>         "\\\\wsl.localhost\\Debian",
+>         "/path/to/other/allowed/dir"
+>       ]
+>     }
+>   }
+> }
+> ```
+> This project remains available for specific use cases and as an example of alternative implementation, but for most users, using the original MCP server with the native network path is probably simpler.
+
+
+
 # Filesystem MCP Server for WSL
 
 Node.js server implementing Model Context Protocol (MCP) specifically designed for filesystem operations in Windows Subsystem for Linux (WSL). This project is a fork of the original [Filesystem MCP Server](https://github.com/modelcontextprotocol/servers/tree/main/src/filesystem) but completely reimagined for WSL environments. Unlike the original project which handles generic file operations, this version focuses exclusively on seamless interaction between Windows and Linux distributions under WSL. Both projects are compatible and can run in parallel on the same system.
