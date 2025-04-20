@@ -1,6 +1,6 @@
 # Filesystem MCP Server for WSL
 
-Node.js server implementing Model Context Protocol (MCP) specifically designed for filesystem operations in Windows Subsystem for Linux (WSL). This project is a fork of the original [Filesystem MCP Server](https://github.com/link/to/original/repo) but completely reimagined for WSL environments. Unlike the original project which handles generic file operations, this version focuses exclusively on seamless interaction between Windows and Linux distributions under WSL. Both projects are compatible and can run in parallel on the same system.
+Node.js server implementing Model Context Protocol (MCP) specifically designed for filesystem operations in Windows Subsystem for Linux (WSL). This project is a fork of the original [Filesystem MCP Server](https://github.com/modelcontextprotocol/servers/tree/main/src/filesystem) but completely reimagined for WSL environments. Unlike the original project which handles generic file operations, this version focuses exclusively on seamless interaction between Windows and Linux distributions under WSL. Both projects are compatible and can run in parallel on the same system.
 
 ## Features
 
@@ -107,9 +107,13 @@ Node.js server implementing Model Context Protocol (MCP) specifically designed f
 
 ## Requirements
 
-- [Node.js](https://nodejs.org/en/download/) (v14.0.0 or higher)
 - [Windows Subsystem for Linux (WSL)](https://learn.microsoft.com/en-us/windows/wsl/install) properly configured
 - At least one Linux distribution installed in WSL
+
+For Claude Desktop users: No additional installation required
+
+For development:
+- [Node.js](https://nodejs.org/en/download/) (v14.0.0 or higher)
 - TypeScript (installed as a development dependency)
 
 ### Installing Node.js on Windows
@@ -159,9 +163,10 @@ Add this to your `claude_desktop_config.json`:
 {
   "mcpServers": {
     "wsl-filesystem": {
-      "command": "node",
+      "command": "npx",
       "args": [
-        "C:\\path\\to\\mcp-server-wsl-filesystem\\dist\\index.js",
+        "-y",
+        "mcp-server-wsl-filesystem",
         "--distro=Ubuntu-20.04",
         "/home/user/documents"
       ]
@@ -176,9 +181,10 @@ Add this to your `claude_desktop_config.json`:
 {
   "mcpServers": {
     "wsl-filesystem": {
-      "command": "node",
+      "command": "npx",
       "args": [
-        "C:\\path\\to\\mcp-server-wsl-filesystem\\dist\\index.js",
+        "-y",
+        "mcp-server-wsl-filesystem",
         "/home/user/documents"
       ]
     }

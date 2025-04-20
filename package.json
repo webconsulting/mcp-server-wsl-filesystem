@@ -1,6 +1,6 @@
 {
-  "name": "wsl-filesystem",
-  "version": "1.0.0",
+  "name": "mcp-server-wsl-filesystem",
+  "version": "1.0.1",
   "description": "MCP server for wsl filesystem access",
   "license": "MIT",
   "author": "Web-C",
@@ -25,5 +25,17 @@
     "@types/diff": "^5.0.9",
     "@types/node": "^22",
     "typescript": "^5.3.3"
-  }
+  },
+  "main": "index.js",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/webconsulting/mcp-server-wsl-filesystem.git"
+  },
+  "keywords": [
+    "mcp"
+  ],
+  "bugs": {
+    "url": "https://github.com/webconsulting/mcp-server-wsl-filesystem/issues"
+  },
+  "homepage": "https://github.com/webconsulting/mcp-server-wsl-filesystem#readme"
 }
