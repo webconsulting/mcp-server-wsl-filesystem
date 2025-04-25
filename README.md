@@ -1,4 +1,7 @@
-> **⚠️ IMPORTANT INFORMATION:** The original [Filesystem MCP Server](https://github.com/modelcontextprotocol/servers/tree/main/src/filesystem) can already access WSL files by simply using the network path `\\wsl.localhost\DistributionName` as a parameter in the configuration. Example:
+> ⚠️ **IMPORTANT INFORMATION:**  
+> The original [Filesystem MCP Server](https://github.com/modelcontextprotocol/servers/tree/main/src/filesystem) can already access WSL files by simply using the network path `\\wsl.localhost\DistributionName` as a parameter in the configuration.  
+> Example:
+> 
 > ```json
 > {
 >   "mcpServers": {
@@ -8,19 +11,29 @@
 >         "-y",
 >         "@modelcontextprotocol/server-filesystem",
 >         "\\\\wsl.localhost\\Debian",
->         "/path/to/other/allowed/dir"
+>         "C:\\path\\to\\other\\allowed\\dir"
 >       ]
 >     }
 >   }
 > }
 > ```
-> This project remains available for specific use cases and as an example of alternative implementation, but for most users, using the original MCP server with the native network path is probably simpler.
+>
+> However, this project offers an **alternative implementation specifically optimized for WSL Linux distributions**.
+>
+> While the official server works by recursively walking directories using Node.js’s `fs` module, this implementation leverages **native Linux commands inside WSL** (such as `find`, `grep`, etc.), making **file listing and content search operations significantly faster**.
+>
+> This can be especially useful when dealing with large directory trees or when search performance is critical.
+>
+> So while the native network path may be simpler for many use cases, this project remains **a valuable solution** for WSL users looking for **better performance** or more **custom control** over the indexing and searching logic.
 
-
+---
 
 # Filesystem MCP Server for WSL
 
-Node.js server implementing Model Context Protocol (MCP) specifically designed for filesystem operations in Windows Subsystem for Linux (WSL). This project is a fork of the original [Filesystem MCP Server](https://github.com/modelcontextprotocol/servers/tree/main/src/filesystem) but completely reimagined for WSL environments. Unlike the original project which handles generic file operations, this version focuses exclusively on seamless interaction between Windows and Linux distributions under WSL. Both projects are compatible and can run in parallel on the same system.
+Node.js server implementing the Model Context Protocol (MCP), specifically designed for filesystem operations in Windows Subsystem for Linux (WSL).  
+This project is a fork of the original [Filesystem MCP Server](https://github.com/modelcontextprotocol/servers/tree/main/src/filesystem) but completely reimagined for WSL environments.  
+Unlike the original project, which handles generic file operations, this version focuses exclusively on seamless interaction between Windows and Linux distributions under WSL.  
+Both projects are compatible and can run in parallel on the same system.
 
 ## Features
 
@@ -29,10 +42,12 @@ Node.js server implementing Model Context Protocol (MCP) specifically designed f
 - Create/list/delete directories in WSL
 - Move files/directories across WSL filesystem
 - Search files within WSL 
-- Get file metadata from WSL filesystem
+- Get file metadata from the WSL filesystem
 - Support for multiple WSL distributions
 
-**Note**: The server will only allow operations within directories specified via `args`.
+**Note**: The server only allows operations within directories specified via `args`.
+
+---
 
 ## API
 
@@ -45,7 +60,7 @@ Node.js server implementing Model Context Protocol (MCP) specifically designed f
 - **read_file**
   - Read complete contents of a file from WSL
   - Input: `path` (string)
-  - Reads complete file contents with UTF-8 encoding
+  - Reads content as UTF-8 text
 
 - **read_multiple_files**
   - Read multiple files simultaneously from WSL
@@ -53,97 +68,84 @@ Node.js server implementing Model Context Protocol (MCP) specifically designed f
   - Failed reads won't stop the entire operation
 
 - **write_file**
-  - Create new file or overwrite existing in WSL (exercise caution)
+  - Create or overwrite a file in WSL (use with caution)
   - Inputs:
-    - `path` (string): File location
-    - `content` (string): File content
+    - `path` (string)
+    - `content` (string)
 
 - **edit_file**
-  - Make selective edits using advanced pattern matching and formatting in WSL files
-  - Features:
-    - Line-based and multi-line content matching
-    - Whitespace normalization with indentation preservation
-    - Multiple simultaneous edits with correct positioning
-    - Indentation style detection and preservation
-    - Git-style diff output with context
-    - Preview changes with dry run mode
+  - Selective edits with advanced pattern matching and formatting
   - Inputs:
-    - `path` (string): File to edit
-    - `edits` (array): List of edit operations
-      - `oldText` (string): Text to search for (can be substring)
-      - `newText` (string): Text to replace with
-    - `dryRun` (boolean): Preview changes without applying (default: false)
-  - Returns detailed diff and match information for dry runs, otherwise applies changes
+    - `path` (string)
+    - `edits` (array of `{ oldText, newText }`)
+    - `dryRun` (boolean, optional)
+  - Features:
+    - Multi-line matching
+    - Indentation preservation
+    - Git-style diff preview
+    - Non-destructive dry run mode
 
 - **create_directory**
-  - Create new directory or ensure it exists in WSL
+  - Create or ensure the existence of a directory in WSL
   - Input: `path` (string)
-  - Creates parent directories if needed
-  - Succeeds silently if directory exists
 
 - **list_directory**
-  - List directory contents in WSL with [FILE] or [DIR] prefixes
+  - List directory contents with `[FILE]` or `[DIR]` prefixes
   - Input: `path` (string)
 
 - **directory_tree**
-  - Get a recursive tree view of files and directories as a JSON structure
+  - Recursive JSON tree view of contents
   - Input: `path` (string)
-  - Returns tree structure with name, type, and children properties
 
 - **move_file**
-  - Move or rename files and directories in WSL
+  - Move or rename files/directories
   - Inputs:
     - `source` (string)
     - `destination` (string)
-  - Fails if destination exists
 
 - **search_files**
-  - Recursively search for files/directories in WSL
+  - Recursively search by name
   - Inputs:
-    - `path` (string): Starting directory
-    - `pattern` (string): Search pattern
-    - `excludePatterns` (string[]): Exclude any patterns. Glob formats are supported.
-  - Case-insensitive matching
-  - Returns full paths to matches
+    - `path` (string)
+    - `pattern` (string)
+    - `excludePatterns` (string[], optional)
 
 - **get_file_info**
-  - Get detailed file/directory metadata from WSL
+  - Detailed metadata
   - Input: `path` (string)
-  - Returns:
-    - Size
-    - Creation time
-    - Modified time
-    - Access time
-    - Type (file/directory)
-    - Permissions
+  - Returns: size, timestamps, type, permissions
 
 - **list_allowed_directories**
-  - List all directories the server is allowed to access in WSL
-  - No input required
+  - Lists all directories accessible to the server
 
 - **list_wsl_distributions**
-  - Lists all available WSL distributions and shows which one is currently being used
-  - No input required
+  - Lists available distributions and shows the active one
+
+---
 
 ## Requirements
 
 - [Windows Subsystem for Linux (WSL)](https://learn.microsoft.com/en-us/windows/wsl/install) properly configured
 - At least one Linux distribution installed in WSL
 
-For Claude Desktop users: No additional installation required
+**For Claude Desktop users:**  
+No additional installation required — just configure your `claude_desktop_config.json`.
 
-For development:
+**For development:**
+
 - [Node.js](https://nodejs.org/en/download/) (v14.0.0 or higher)
-- TypeScript (installed as a development dependency)
+- TypeScript (included as a dev dependency)
 
 ### Installing Node.js on Windows
 
-1. Download the Windows installer from the [official Node.js website](https://nodejs.org/en/download/)
-2. Run the installer and follow the installation wizard
-3. Verify installation by opening Command Prompt and running:
-   ```bash
-   node --version
-   npm --version
+1. Download the installer from [nodejs.org](https://nodejs.org/en/download/)
+2. Run it and follow the instructions
+3. Check versions:
+
+```bash
+node --version
+npm --version
+```
 
 ## Usage
 
