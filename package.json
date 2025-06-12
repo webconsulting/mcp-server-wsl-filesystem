@@ -1,6 +1,6 @@
 {
   "name": "mcp-server-wsl-filesystem",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "MCP server for wsl filesystem access",
   "license": "MIT",
   "author": "Web-C",

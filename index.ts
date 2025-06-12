@@ -261,14 +261,11 @@ async function execWslPipeline(commands: string[]): Promise<string> {
       throw new Error("No commands provided");
     }
     
-    // Préfixe chaque commande avec wsl et les options appropriées
-    const prefixedCommands = commands.map(cmd => {
-      return allowedDistro ? `wsl -d ${allowedDistro} ${cmd}` : `wsl ${cmd}`;
-    });
-    
-    // Joint les commandes avec des pipes
-    const fullCommand = prefixedCommands.join(" | ");
-    
+    const joined = commands.join(" | ").replace(/"/g, '\\"');
+    const fullCommand = allowedDistro
+      ? `wsl -d ${allowedDistro} sh -c "${joined}"`
+      : `wsl sh -c "${joined}"`;
+
     const { stdout } = await execAsync(fullCommand);
     return stdout.trim();
   }
@@ -309,7 +306,9 @@ async function wslReaddir(dirPath: string): Promise<FileEntry[]> {
   const wslPath = toWslPath(dirPath);
   try {
     // Utiliser ls -la, mais filtrer . et .. (d'où le tail -n +3), et utiliser le bon format de sortie
-    const result = await execWslPipeline([`ls -la "${wslPath}"`, "tail -n +3"]);
+    const result = await execWslCommand(
+      `sh -c "ls -la \\"${wslPath}\\" | tail -n +3"`
+    );
     if (!result)
       return [];
 
@@ -575,33 +574,26 @@ async function searchFiles(
   excludePatterns: string[] = []
 ): Promise<string[]> {
   const wslRootPath = toWslPath(rootPath);
-
+   const escapedPattern = pattern.replace(/"/g, '\\"');
   // Construire une commande find plus robuste
-  let command = [`find "${wslRootPath}" -type f -o -type d`];
+  const command = [`find "${wslRootPath}" -type f`];
 
-  // Ajouter le filtrage par pattern
+  // Ajouter grep si pattern fourni
   if (pattern) {
-    command.push(`grep -i "${pattern.replace(/"/g, '\\"')}"`);
+    command.push(`grep -i "${escapedPattern}"`);
   }
 
   // Ajouter des filtres d'exclusion
   if (excludePatterns && excludePatterns.length > 0) {
-    for (const exPattern of excludePatterns) {
-      // Échapper les caractères spéciaux pour grep
-      const grepPattern = exPattern.replace(/\*/g, '.*').replace(/"/g, '\\"');
-      command.push(`grep -v "${grepPattern}"`);
+     for (const ex of excludePatterns) {
+      const excluded = ex.replace(/\*/g, ".*").replace(/"/g, '\\"');
+      command.push(`grep -v "${excluded}"`);
     }
   }
 
   try {
-    let result;
-    if(command.length){
-      result = await execWslPipeline(command);
-    }
-    else {
-      result = await execWslCommand(command[0]);
-    }
-    return result ? result.split('\n') : [];
+    const result = await execWslPipeline(command);
+    return result ? result.split("\n") : [];
   }
   catch (error: any) {
     // Si grep ne trouve rien, il renvoie une erreur, mais ce n'est pas une vraie erreur
