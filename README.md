@@ -1,3 +1,5 @@
+[![MseeP.ai Security Assessment Badge](https://mseep.net/pr/webconsulting-mcp-server-wsl-filesystem-badge.png)](https://mseep.ai/app/webconsulting-mcp-server-wsl-filesystem)
+
 > ⚠️ **IMPORTANT INFORMATION:**  
 > The original [Filesystem MCP Server](https://github.com/modelcontextprotocol/servers/tree/main/src/filesystem) can already access WSL files by simply using the network path `\\wsl.localhost\DistributionName` as a parameter in the configuration.  
 > Example:
