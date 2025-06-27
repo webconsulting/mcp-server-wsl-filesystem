@@ -538,8 +538,12 @@ const GetFileInfoArgsSchema = z.object({
   path: z.string(),
 });
 
-// Nouveau schéma pour lister les distributions WSL
 const ListWslDistrosArgsSchema = z.object({});
+
+const ReadFileByPartsArgsSchema = z.object({
+  path: z.string(),
+  part_number: z.number().int().positive().describe('Part number to read (1, 2, 3, etc.)')
+});
 
 const ToolInputSchema = ToolSchema.shape.inputSchema;
 type ToolInput = z.infer<typeof ToolInputSchema>;
@@ -547,7 +551,7 @@ type ToolInput = z.infer<typeof ToolInputSchema>;
 // Server setup
 const server = new Server({
   name: "secure-filesystem-server",
-  version: "0.2.0",
+  version: "1.1.0",
 }, {
   capabilities: {
     tools: {},
@@ -574,7 +578,7 @@ async function searchFiles(
   excludePatterns: string[] = []
 ): Promise<string[]> {
   const wslRootPath = toWslPath(rootPath);
-   const escapedPattern = pattern.replace(/"/g, '\\"');
+  const escapedPattern = pattern.replace(/"/g, '\\"');
   // Construire une commande find plus robuste
   const command = [`find "${wslRootPath}" -type f`];
 
@@ -601,6 +605,86 @@ async function searchFiles(
       return [];
     }
     throw error;
+  }
+}
+
+async function readFileByParts(filePath: string, partNumber: number): Promise<string> {
+  const wslPath = toWslPath(filePath);
+  const PART_SIZE = 95000;
+  const MAX_BACKTRACK = 300;
+  
+  try {
+    // Obtenir la taille du fichier
+    const fileSizeStr = await execWslCommand(`bash -c "wc -c < '${wslPath}'"`);
+    const fileSize = parseInt(fileSizeStr.trim());
+    
+    // Calculer la position de début théorique
+    const theoreticalStart = (partNumber - 1) * PART_SIZE;
+    
+    // Vérifier si la partie demandée existe
+    if (theoreticalStart >= fileSize) {
+      throw new Error(`File has only ${fileSize.toLocaleString()} characters. Part ${partNumber} does not exist.`);
+    }
+    
+    let actualStart = theoreticalStart;
+    
+    // Pour la première partie, pas de recul nécessaire
+    if (partNumber === 1) {
+      const content = await execWslCommand(`head -c ${PART_SIZE} "${wslPath}"`);
+      return content;
+    }
+    
+    // Pour les autres parties, trouver le début de ligne précédent
+    if (partNumber > 1) {
+      const searchStart = Math.max(0, theoreticalStart - MAX_BACKTRACK);
+      const searchLength = theoreticalStart - searchStart;
+      
+      if (searchLength > 0) {
+        // Lire la zone de recherche et trouver le dernier \n
+        const searchContent = await execWslCommand(
+          `bash -c "tail -c +${searchStart + 1} '${wslPath}' | head -c ${searchLength}"`
+        );
+        
+        const lastNewlineIndex = searchContent.lastIndexOf('\n');
+        
+        if (lastNewlineIndex !== -1) {
+          actualStart = searchStart + lastNewlineIndex + 1;
+        }
+      }
+    }
+    
+    // Lire le contenu depuis actualStart
+    let content = await execWslCommand(
+      `bash -c "tail -c +${actualStart + 1} '${wslPath}' | head -c ${PART_SIZE}"`
+    );
+    
+    // Pour les parties autres que la première, essayer de finir sur une ligne complète
+    if (partNumber > 1 && content.length === PART_SIZE) {
+      const endSearchStart = actualStart + PART_SIZE;
+      
+      if (endSearchStart < fileSize) {
+        const remainingChars = Math.min(MAX_BACKTRACK, fileSize - endSearchStart);
+        
+        if (remainingChars > 0) {
+          const endSearchContent = await execWslCommand(
+            `bash -c "tail -c +${endSearchStart + 1} '${wslPath}' | head -c ${remainingChars}"`
+          );
+          
+          const firstNewlineIndex = endSearchContent.indexOf('\n');
+          
+          if (firstNewlineIndex !== -1) {
+            content += endSearchContent.substring(0, firstNewlineIndex + 1);
+          }
+        }
+      }
+    }
+    
+    return content;
+  } catch (error: any) {
+    if (error.message.includes('File has only')) {
+      throw error;
+    }
+    throw new Error(`Failed to read file part ${partNumber} of ${filePath}: ${error.message}`);
   }
 }
 
@@ -709,6 +793,15 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
         inputSchema: zodToJsonSchema(ReadFileArgsSchema) as ToolInput,
       },
       {
+        name: "read_file_by_parts",
+        description: "Read a file in parts of approximately 95,000 characters. " +
+          "Use this for large files that cannot be read in one go. " +
+          "Part 1 reads the first 95,000 characters. " +
+          "Subsequent parts start at boundaries that respect line breaks when possible. " +
+          "If a requested part number exceeds the file size, an error is returned with the actual file size.",
+        inputSchema: zodToJsonSchema(ReadFileByPartsArgsSchema) as ToolInput,
+      },
+      {
         name: "read_multiple_files",
         description: "Read the contents of multiple files simultaneously. This is more " +
           "efficient than reading files one by one when you need to analyze " +
@@ -812,6 +905,21 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         const content = await wslReadFile(validPath);
         return {
           content: [{ type: "text", text: content }],
+        };
+      }
+      case "read_file_by_parts": {
+        const parsed = ReadFileByPartsArgsSchema.safeParse(args);
+        if (!parsed.success) {
+          throw new Error(`Invalid arguments for read_file_by_parts: ${parsed.error}`);
+        }
+        const validPath = await validatePath(parsed.data.path);
+        const content = await readFileByParts(validPath, parsed.data.part_number);
+        
+        return {
+          content: [{ 
+            type: "text", 
+            text: content
+          }],
         };
       }
       case "read_multiple_files": {
