@@ -37,5 +37,8 @@
   "bugs": {
     "url": "https://github.com/webconsulting/mcp-server-wsl-filesystem/issues"
   },
-  "homepage": "https://github.com/webconsulting/mcp-server-wsl-filesystem#readme"
+  "homepage": "https://github.com/webconsulting/mcp-server-wsl-filesystem#readme",
+  "engines": {
+    "node": ">=18"
+  }
 }

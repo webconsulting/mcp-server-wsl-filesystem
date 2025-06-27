@@ -994,33 +994,79 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         if (!parsed.success) {
           throw new Error(`Invalid arguments for directory_tree: ${parsed.error}`);
         }
-        async function buildTree(currentPath: string): Promise<TreeEntry[]> {
-          const validPath = await validatePath(currentPath);
-          const entries = await wslReaddir(validPath);
-          const result: TreeEntry[] = [];
-          for (const entry of entries) {
-            const entryData: TreeEntry = {
-              name: entry.name,
-              type: entry.isDirectory() ? 'directory' : 'file'
+        
+        const validPath = await validatePath(parsed.data.path);
+        const wslPath = toWslPath(validPath);
+        
+        // Utiliser find pour obtenir tous les fichiers et répertoires en une seule commande
+        try {
+          // %y = type (d pour directory, f pour file)
+          // %P = chemin relatif depuis le point de départ
+          const findResult = await execWslCommand(
+            `find "${wslPath}" -printf "%y %P\n" | sort`
+          );
+          
+          if (!findResult.trim()) {
+            return {
+              content: [{
+                type: "text",
+                text: JSON.stringify([], null, 2)
+              }],
             };
-
-            if (entry.isDirectory()) {
-              const subPath = join(currentPath, entry.name);
-              entryData.children = await buildTree(subPath);
-            }
-
-            result.push(entryData);
           }
-          return result;
+          
+          // Parser la sortie de find et reconstruire l'arbre
+          const lines = findResult.trim().split('\n');
+          const tree: TreeEntry[] = [];
+          const pathMap = new Map<string, TreeEntry>();
+          
+          // Première ligne devrait être le répertoire racine lui-même (chemin vide)
+          // On la saute car on veut le contenu du répertoire, pas le répertoire lui-même
+          const startIndex = lines[0] === 'd ' ? 1 : 0;
+          
+          for (let i = startIndex; i < lines.length; i++) {
+            const line = lines[i];
+            const [type, ...pathParts] = line.split(' ');
+            const relativePath = pathParts.join(' ');
+            
+            if (!relativePath) continue; // Ignorer les lignes vides
+            
+            const parts = relativePath.split('/');
+            const name = parts[parts.length - 1];
+            const parentPath = parts.slice(0, -1).join('/');
+            
+            const entry: TreeEntry = {
+              name,
+              type: type === 'd' ? 'directory' : 'file'
+            };
+            
+            if (type === 'd') {
+              entry.children = [];
+            }
+            
+            pathMap.set(relativePath, entry);
+            
+            if (parentPath) {
+              // Ajouter à son parent
+              const parent = pathMap.get(parentPath);
+              if (parent && parent.children) {
+                parent.children.push(entry);
+              }
+            } else {
+              // Entrée de premier niveau
+              tree.push(entry);
+            }
+          }
+          
+          return {
+            content: [{
+              type: "text",
+              text: JSON.stringify(tree, null, 2)
+            }],
+          };
+        } catch (error: any) {
+          throw new Error(`Failed to get directory tree for ${parsed.data.path}: ${error.message}`);
         }
-
-        const treeData = await buildTree(parsed.data.path);
-        return {
-          content: [{
-            type: "text",
-            text: JSON.stringify(treeData, null, 2)
-          }],
-        };
       }
       case "move_file": {
         const parsed = MoveFileArgsSchema.safeParse(args);
