@@ -538,8 +538,12 @@ const GetFileInfoArgsSchema = z.object({
   path: z.string(),
 });
 
-// Nouveau schéma pour lister les distributions WSL
 const ListWslDistrosArgsSchema = z.object({});
+
+const ReadFileByPartsArgsSchema = z.object({
+  path: z.string(),
+  part_number: z.number().int().positive().describe('Part number to read (1, 2, 3, etc.)')
+});
 
 const ToolInputSchema = ToolSchema.shape.inputSchema;
 type ToolInput = z.infer<typeof ToolInputSchema>;
@@ -547,7 +551,7 @@ type ToolInput = z.infer<typeof ToolInputSchema>;
 // Server setup
 const server = new Server({
   name: "secure-filesystem-server",
-  version: "0.2.0",
+  version: "1.2.0",
 }, {
   capabilities: {
     tools: {},
@@ -568,13 +572,13 @@ async function getFileStats(filePath: string): Promise<FileInfo> {
   };
 }
 
-async function searchFiles(
+async function searchFilesByName(
   rootPath: string,
   pattern: string,
   excludePatterns: string[] = []
 ): Promise<string[]> {
   const wslRootPath = toWslPath(rootPath);
-   const escapedPattern = pattern.replace(/"/g, '\\"');
+  const escapedPattern = pattern.replace(/"/g, '\\"');
   // Construire une commande find plus robuste
   const command = [`find "${wslRootPath}" -type f`];
 
@@ -601,6 +605,86 @@ async function searchFiles(
       return [];
     }
     throw error;
+  }
+}
+
+async function readFileByParts(filePath: string, partNumber: number): Promise<string> {
+  const wslPath = toWslPath(filePath);
+  const PART_SIZE = 95000;
+  const MAX_BACKTRACK = 300;
+  
+  try {
+    // Obtenir la taille du fichier
+    const fileSizeStr = await execWslCommand(`bash -c "wc -c < '${wslPath}'"`);
+    const fileSize = parseInt(fileSizeStr.trim());
+    
+    // Calculer la position de début théorique
+    const theoreticalStart = (partNumber - 1) * PART_SIZE;
+    
+    // Vérifier si la partie demandée existe
+    if (theoreticalStart >= fileSize) {
+      throw new Error(`File has only ${fileSize.toLocaleString()} characters. Part ${partNumber} does not exist.`);
+    }
+    
+    let actualStart = theoreticalStart;
+    
+    // Pour la première partie, pas de recul nécessaire
+    if (partNumber === 1) {
+      const content = await execWslCommand(`head -c ${PART_SIZE} "${wslPath}"`);
+      return content;
+    }
+    
+    // Pour les autres parties, trouver le début de ligne précédent
+    if (partNumber > 1) {
+      const searchStart = Math.max(0, theoreticalStart - MAX_BACKTRACK);
+      const searchLength = theoreticalStart - searchStart;
+      
+      if (searchLength > 0) {
+        // Lire la zone de recherche et trouver le dernier \n
+        const searchContent = await execWslCommand(
+          `bash -c "tail -c +${searchStart + 1} '${wslPath}' | head -c ${searchLength}"`
+        );
+        
+        const lastNewlineIndex = searchContent.lastIndexOf('\n');
+        
+        if (lastNewlineIndex !== -1) {
+          actualStart = searchStart + lastNewlineIndex + 1;
+        }
+      }
+    }
+    
+    // Lire le contenu depuis actualStart
+    let content = await execWslCommand(
+      `bash -c "tail -c +${actualStart + 1} '${wslPath}' | head -c ${PART_SIZE}"`
+    );
+    
+    // Pour les parties autres que la première, essayer de finir sur une ligne complète
+    if (partNumber > 1 && content.length === PART_SIZE) {
+      const endSearchStart = actualStart + PART_SIZE;
+      
+      if (endSearchStart < fileSize) {
+        const remainingChars = Math.min(MAX_BACKTRACK, fileSize - endSearchStart);
+        
+        if (remainingChars > 0) {
+          const endSearchContent = await execWslCommand(
+            `bash -c "tail -c +${endSearchStart + 1} '${wslPath}' | head -c ${remainingChars}"`
+          );
+          
+          const firstNewlineIndex = endSearchContent.indexOf('\n');
+          
+          if (firstNewlineIndex !== -1) {
+            content += endSearchContent.substring(0, firstNewlineIndex + 1);
+          }
+        }
+      }
+    }
+    
+    return content;
+  } catch (error: any) {
+    if (error.message.includes('File has only')) {
+      throw error;
+    }
+    throw new Error(`Failed to read file part ${partNumber} of ${filePath}: ${error.message}`);
   }
 }
 
@@ -709,6 +793,15 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
         inputSchema: zodToJsonSchema(ReadFileArgsSchema) as ToolInput,
       },
       {
+        name: "read_file_by_parts",
+        description: "Read a file in parts of approximately 95,000 characters. " +
+          "Use this for large files that cannot be read in one go. " +
+          "Part 1 reads the first 95,000 characters. " +
+          "Subsequent parts start at boundaries that respect line breaks when possible. " +
+          "If a requested part number exceeds the file size, an error is returned with the actual file size.",
+        inputSchema: zodToJsonSchema(ReadFileByPartsArgsSchema) as ToolInput,
+      },
+      {
         name: "read_multiple_files",
         description: "Read the contents of multiple files simultaneously. This is more " +
           "efficient than reading files one by one when you need to analyze " +
@@ -764,7 +857,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
         inputSchema: zodToJsonSchema(MoveFileArgsSchema) as ToolInput,
       },
       {
-        name: "search_files",
+        name: "search_files_by_name",
         description: "Recursively search for files and directories matching a pattern. " +
           "Searches through all subdirectories from the starting path. The search " +
           "is case-insensitive and matches partial names. Returns full paths to all " +
@@ -812,6 +905,21 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         const content = await wslReadFile(validPath);
         return {
           content: [{ type: "text", text: content }],
+        };
+      }
+      case "read_file_by_parts": {
+        const parsed = ReadFileByPartsArgsSchema.safeParse(args);
+        if (!parsed.success) {
+          throw new Error(`Invalid arguments for read_file_by_parts: ${parsed.error}`);
+        }
+        const validPath = await validatePath(parsed.data.path);
+        const content = await readFileByParts(validPath, parsed.data.part_number);
+        
+        return {
+          content: [{ 
+            type: "text", 
+            text: content
+          }],
         };
       }
       case "read_multiple_files": {
@@ -886,33 +994,79 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         if (!parsed.success) {
           throw new Error(`Invalid arguments for directory_tree: ${parsed.error}`);
         }
-        async function buildTree(currentPath: string): Promise<TreeEntry[]> {
-          const validPath = await validatePath(currentPath);
-          const entries = await wslReaddir(validPath);
-          const result: TreeEntry[] = [];
-          for (const entry of entries) {
-            const entryData: TreeEntry = {
-              name: entry.name,
-              type: entry.isDirectory() ? 'directory' : 'file'
+        
+        const validPath = await validatePath(parsed.data.path);
+        const wslPath = toWslPath(validPath);
+        
+        // Utiliser find pour obtenir tous les fichiers et répertoires en une seule commande
+        try {
+          // %y = type (d pour directory, f pour file)
+          // %P = chemin relatif depuis le point de départ
+          const findResult = await execWslCommand(
+            `find "${wslPath}" -printf "%y %P\n" | sort`
+          );
+          
+          if (!findResult.trim()) {
+            return {
+              content: [{
+                type: "text",
+                text: JSON.stringify([], null, 2)
+              }],
             };
-
-            if (entry.isDirectory()) {
-              const subPath = join(currentPath, entry.name);
-              entryData.children = await buildTree(subPath);
-            }
-
-            result.push(entryData);
           }
-          return result;
+          
+          // Parser la sortie de find et reconstruire l'arbre
+          const lines = findResult.trim().split('\n');
+          const tree: TreeEntry[] = [];
+          const pathMap = new Map<string, TreeEntry>();
+          
+          // Première ligne devrait être le répertoire racine lui-même (chemin vide)
+          // On la saute car on veut le contenu du répertoire, pas le répertoire lui-même
+          const startIndex = lines[0] === 'd ' ? 1 : 0;
+          
+          for (let i = startIndex; i < lines.length; i++) {
+            const line = lines[i];
+            const [type, ...pathParts] = line.split(' ');
+            const relativePath = pathParts.join(' ');
+            
+            if (!relativePath) continue; // Ignorer les lignes vides
+            
+            const parts = relativePath.split('/');
+            const name = parts[parts.length - 1];
+            const parentPath = parts.slice(0, -1).join('/');
+            
+            const entry: TreeEntry = {
+              name,
+              type: type === 'd' ? 'directory' : 'file'
+            };
+            
+            if (type === 'd') {
+              entry.children = [];
+            }
+            
+            pathMap.set(relativePath, entry);
+            
+            if (parentPath) {
+              // Ajouter à son parent
+              const parent = pathMap.get(parentPath);
+              if (parent && parent.children) {
+                parent.children.push(entry);
+              }
+            } else {
+              // Entrée de premier niveau
+              tree.push(entry);
+            }
+          }
+          
+          return {
+            content: [{
+              type: "text",
+              text: JSON.stringify(tree, null, 2)
+            }],
+          };
+        } catch (error: any) {
+          throw new Error(`Failed to get directory tree for ${parsed.data.path}: ${error.message}`);
         }
-
-        const treeData = await buildTree(parsed.data.path);
-        return {
-          content: [{
-            type: "text",
-            text: JSON.stringify(treeData, null, 2)
-          }],
-        };
       }
       case "move_file": {
         const parsed = MoveFileArgsSchema.safeParse(args);
@@ -926,13 +1080,13 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           content: [{ type: "text", text: `Successfully moved ${parsed.data.source} to ${parsed.data.destination}` }],
         };
       }
-      case "search_files": {
+      case "search_files_by_name": {
         const parsed = SearchFilesArgsSchema.safeParse(args);
         if (!parsed.success) {
-          throw new Error(`Invalid arguments for search_files: ${parsed.error}`);
+          throw new Error(`Invalid arguments for search_files_by_name: ${parsed.error}`);
         }
         const validPath = await validatePath(parsed.data.path);
-        const results = await searchFiles(validPath, parsed.data.pattern, parsed.data.excludePatterns || []);
+        const results = await searchFilesByName(validPath, parsed.data.pattern, parsed.data.excludePatterns || []);
         return {
           content: [{ type: "text", text: results.length > 0 ? results.join("\n") : "No matches found" }],
         };

@@ -62,6 +62,17 @@ Both projects are compatible and can run in parallel on the same system.
   - Input: `path` (string)
   - Reads content as UTF-8 text
 
+- **read_file_by_parts**
+  - Read large files in parts of approximately 95,000 characters
+  - Inputs:
+    - `path` (string)
+    - `part_number` (positive integer: 1, 2, 3, etc.)
+  - Features:
+    - Part 1 starts from the beginning of the file
+    - Subsequent parts align to line boundaries (max 300 character adjustment)
+    - Returns error with actual file size if requested part doesn't exist
+    - Useful for files too large to read in one operation
+
 - **read_multiple_files**
   - Read multiple files simultaneously from WSL
   - Input: `paths` (string[])

@@ -1,6 +1,6 @@
 {
   "name": "mcp-server-wsl-filesystem",
-  "version": "1.0.2",
+  "version": "1.2.0",
   "description": "MCP server for wsl filesystem access",
   "license": "MIT",
   "author": "Web-C",
@@ -17,9 +17,9 @@
     "watch": "tsc --watch"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "0.5.0",
-    "diff": "^5.1.0",
-    "zod-to-json-schema": "^3.23.5"
+    "@modelcontextprotocol/sdk": "^1.13.2",
+    "diff": "^8.0.2",
+    "zod-to-json-schema": "^3.24.6"
   },
   "devDependencies": {
     "@types/diff": "^5.0.9",
@@ -37,5 +37,8 @@
   "bugs": {
     "url": "https://github.com/webconsulting/mcp-server-wsl-filesystem/issues"
   },
-  "homepage": "https://github.com/webconsulting/mcp-server-wsl-filesystem#readme"
+  "homepage": "https://github.com/webconsulting/mcp-server-wsl-filesystem#readme",
+  "engines": {
+    "node": ">=18"
+  }
 }
