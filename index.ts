@@ -551,7 +551,7 @@ type ToolInput = z.infer<typeof ToolInputSchema>;
 // Server setup
 const server = new Server({
   name: "secure-filesystem-server",
-  version: "1.1.0",
+  version: "1.2.0",
 }, {
   capabilities: {
     tools: {},
