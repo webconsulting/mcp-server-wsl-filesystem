@@ -551,7 +551,7 @@ type ToolInput = z.infer<typeof ToolInputSchema>;
 // Server setup
 const server = new Server({
   name: "secure-filesystem-server",
-  version: "1.2.0",
+  version: "1.2.1",
 }, {
   capabilities: {
     tools: {},
@@ -584,26 +584,22 @@ async function searchFilesByName(
 
   // Ajouter grep si pattern fourni
   if (pattern) {
-    command.push(`grep -i "${escapedPattern}"`);
+    command.push(`(grep -i "${escapedPattern}" || true)`);
   }
 
   // Ajouter des filtres d'exclusion
   if (excludePatterns && excludePatterns.length > 0) {
      for (const ex of excludePatterns) {
       const excluded = ex.replace(/\*/g, ".*").replace(/"/g, '\\"');
-      command.push(`grep -v "${excluded}"`);
+      command.push(`(grep -v "${excluded}" || true)`);
     }
   }
 
   try {
     const result = await execWslPipeline(command);
-    return result ? result.split("\n") : [];
+    return result ? result.split("\n").filter(line => line.trim() !== "") : [];
   }
   catch (error: any) {
-    // Si grep ne trouve rien, il renvoie une erreur, mais ce n'est pas une vraie erreur
-    if (error.message.includes('no matches found') || error.message.includes('returned non-zero exit code')) {
-      return [];
-    }
     throw error;
   }
 }
