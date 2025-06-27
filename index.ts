@@ -572,7 +572,7 @@ async function getFileStats(filePath: string): Promise<FileInfo> {
   };
 }
 
-async function searchFiles(
+async function searchFilesByName(
   rootPath: string,
   pattern: string,
   excludePatterns: string[] = []
@@ -857,7 +857,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
         inputSchema: zodToJsonSchema(MoveFileArgsSchema) as ToolInput,
       },
       {
-        name: "search_files",
+        name: "search_files_by_name",
         description: "Recursively search for files and directories matching a pattern. " +
           "Searches through all subdirectories from the starting path. The search " +
           "is case-insensitive and matches partial names. Returns full paths to all " +
@@ -1034,13 +1034,13 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           content: [{ type: "text", text: `Successfully moved ${parsed.data.source} to ${parsed.data.destination}` }],
         };
       }
-      case "search_files": {
+      case "search_files_by_name": {
         const parsed = SearchFilesArgsSchema.safeParse(args);
         if (!parsed.success) {
-          throw new Error(`Invalid arguments for search_files: ${parsed.error}`);
+          throw new Error(`Invalid arguments for search_files_by_name: ${parsed.error}`);
         }
         const validPath = await validatePath(parsed.data.path);
-        const results = await searchFiles(validPath, parsed.data.pattern, parsed.data.excludePatterns || []);
+        const results = await searchFilesByName(validPath, parsed.data.pattern, parsed.data.excludePatterns || []);
         return {
           content: [{ type: "text", text: results.length > 0 ? results.join("\n") : "No matches found" }],
         };
