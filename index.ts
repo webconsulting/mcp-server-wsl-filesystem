@@ -551,7 +551,7 @@ type ToolInput = z.infer<typeof ToolInputSchema>;
 // Server setup
 const server = new Server({
   name: "secure-filesystem-server",
-  version: "1.2.3",
+  version: "1.2.4",
 }, {
   capabilities: {
     tools: {},
@@ -1018,10 +1018,10 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           
           // Première ligne devrait être le répertoire racine lui-même (chemin vide)
           // On la saute car on veut le contenu du répertoire, pas le répertoire lui-même
-          const startIndex = lines[0] === 'd ' ? 1 : 0;
+          const startIndex = lines[0].trim() === 'd ' ? 1 : 0;
           
           for (let i = startIndex; i < lines.length; i++) {
-            const line = lines[i];
+            const line = lines[i].trim();
             const [type, ...pathParts] = line.split(' ');
             const relativePath = pathParts.join(' ');
             
