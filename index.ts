@@ -551,7 +551,7 @@ type ToolInput = z.infer<typeof ToolInputSchema>;
 // Server setup
 const server = new Server({
   name: "secure-filesystem-server",
-  version: "1.2.2",
+  version: "1.2.3",
 }, {
   capabilities: {
     tools: {},
@@ -999,7 +999,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           // %y = type (d pour directory, f pour file)
           // %P = chemin relatif depuis le point de départ
           const findResult = await execWslCommand(
-            `find "${wslPath}" -printf "%y %P\n" | sort`
+            `find "${wslPath}" -printf "%y %P\\n" | sort`
           );
           
           if (!findResult.trim()) {
