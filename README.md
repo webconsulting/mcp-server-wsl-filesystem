@@ -30,6 +30,9 @@
 
 # Filesystem MCP Server for WSL
 
+[![npm version](https://img.shields.io/npm/v/mcp-server-wsl-filesystem.svg)](https://www.npmjs.com/package/mcp-server-wsl-filesystem)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
 Node.js server implementing the Model Context Protocol (MCP), specifically designed for filesystem operations in Windows Subsystem for Linux (WSL).  
 This project is a fork of the original [Filesystem MCP Server](https://github.com/modelcontextprotocol/servers/tree/main/src/filesystem) but completely reimagined for WSL environments.  
 Unlike the original project, which handles generic file operations, this version focuses exclusively on seamless interaction between Windows and Linux distributions under WSL.  
@@ -121,6 +124,24 @@ Both projects are compatible and can run in parallel on the same system.
     - `pattern` (string)
     - `excludePatterns` (string[], optional)
 
+- **search_in_files**
+  - Search for text patterns within files recursively
+  - Inputs:
+    - `path` (string) - root directory to search
+    - `pattern` (string) - text or regex pattern to find
+    - `caseInsensitive` (boolean, optional) - case-insensitive search
+    - `isRegex` (boolean, optional) - treat pattern as regex
+    - `includePatterns` (string[], optional) - file patterns to include (e.g., *.js)
+    - `excludePatterns` (string[], optional) - file patterns to exclude
+    - `maxResults` (number, optional, default: 1000) - maximum results to return
+    - `contextLines` (number, optional, default: 0) - lines of context before/after
+  - Features:
+    - Handles all special characters (apostrophes, quotes, $, backslashes)
+    - Supports plain text and regular expression searches
+    - Shows matching lines with file paths and line numbers
+    - Automatically excludes .git, node_modules, .svn, .hg directories
+    - Can show context lines around matches
+
 - **get_file_info**
   - Detailed metadata
   - Input: `path` (string)
@@ -142,9 +163,12 @@ Both projects are compatible and can run in parallel on the same system.
 **For Claude Desktop users:**  
 No additional installation required — just configure your `claude_desktop_config.json`.
 
+**NPM Package:**  
+The package is available on npm: [mcp-server-wsl-filesystem](https://www.npmjs.com/package/mcp-server-wsl-filesystem)
+
 **For development:**
 
-- [Node.js](https://nodejs.org/en/download/) (v14.0.0 or higher)
+- [Node.js](https://nodejs.org/en/download/) (v18.0.0 or higher)
 - TypeScript (included as a dev dependency)
 
 ### Installing Node.js on Windows

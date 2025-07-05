@@ -545,13 +545,24 @@ const ReadFileByPartsArgsSchema = z.object({
   part_number: z.number().int().positive().describe('Part number to read (1, 2, 3, etc.)')
 });
 
+const SearchInFilesArgsSchema = z.object({
+  path: z.string(),
+  pattern: z.string(),
+  caseInsensitive: z.boolean().default(false).describe('Case insensitive search'),
+  isRegex: z.boolean().default(false).describe('Treat pattern as regular expression'),
+  includePatterns: z.array(z.string()).optional().default([]).describe('File patterns to include (e.g., *.js, *.ts)'),
+  excludePatterns: z.array(z.string()).optional().default([]).describe('File patterns to exclude'),
+  maxResults: z.number().int().positive().default(1000).describe('Maximum number of results to return'),
+  contextLines: z.number().int().min(0).default(0).describe('Number of context lines before and after match')
+});
+
 const ToolInputSchema = ToolSchema.shape.inputSchema;
 type ToolInput = z.infer<typeof ToolInputSchema>;
 
 // Server setup
 const server = new Server({
   name: "secure-filesystem-server",
-  version: "1.2.4",
+  version: "1.3.0",
 }, {
   capabilities: {
     tools: {},
@@ -601,6 +612,107 @@ async function searchFilesByName(
   }
   catch (error: any) {
     throw error;
+  }
+}
+
+async function searchInFiles(
+  rootPath: string,
+  pattern: string,
+  options: {
+    caseInsensitive?: boolean;
+    isRegex?: boolean;
+    includePatterns?: string[];
+    excludePatterns?: string[];
+    maxResults?: number;
+    contextLines?: number;
+  } = {}
+): Promise<string> {
+  const wslRootPath = toWslPath(rootPath);
+  
+  // Construire la commande grep
+  const grepOptions: string[] = [];
+  
+  // Options de base
+  grepOptions.push('-n'); // Numéros de ligne
+  grepOptions.push('-H'); // Toujours afficher le nom du fichier
+  grepOptions.push('-r'); // Récursif
+  
+  // Options conditionnelles
+  if (options.caseInsensitive) {
+    grepOptions.push('-i');
+  }
+  
+  if (options.isRegex) {
+    grepOptions.push('-E'); // Extended regex
+  } else {
+    grepOptions.push('-F'); // Fixed string
+  }
+  
+  // Contexte
+  if (options.contextLines && options.contextLines > 0) {
+    grepOptions.push(`-C${options.contextLines}`);
+  }
+  
+  // Limiter les résultats
+  if (options.maxResults) {
+    grepOptions.push(`-m${Math.ceil(options.maxResults / 10)}`); // Approximatif par fichier
+  }
+  
+  // Patterns d'inclusion
+  if (options.includePatterns && options.includePatterns.length > 0) {
+    for (const pattern of options.includePatterns) {
+      grepOptions.push(`--include=${pattern}`);
+    }
+  }
+  
+  // Patterns d'exclusion
+  if (options.excludePatterns && options.excludePatterns.length > 0) {
+    for (const pattern of options.excludePatterns) {
+      grepOptions.push(`--exclude=${pattern}`);
+    }
+  }
+  
+  // Exclure les répertoires communs à ignorer
+  grepOptions.push('--exclude-dir=.git');
+  grepOptions.push('--exclude-dir=node_modules');
+  grepOptions.push('--exclude-dir=.svn');
+  grepOptions.push('--exclude-dir=.hg');
+  
+  try {
+    // Encoder le pattern en base64 pour éviter tous problèmes d'échappement
+    const base64Pattern = Buffer.from(pattern).toString('base64');
+    
+    // Construire la commande qui passe le pattern via stdin
+    const grepCommand = `bash -c "echo '${base64Pattern}' | base64 -d | grep ${grepOptions.join(' ')} -f - '${wslRootPath}' 2>&1 || true"`;
+    const result = await execWslCommand(grepCommand);
+    
+    if (!result.trim()) {
+      return "No matches found.";
+    }
+    
+    // Filtrer les messages d'erreur grep courants
+    const lines = result.trim().split('\n').filter(line => {
+      // Ignorer les messages d'erreur courants de grep
+      return !line.includes('grep: ') && 
+             !line.includes('Is a directory') &&
+             !line.includes('Permission denied') &&
+             !line.includes('No such file or directory');
+    });
+    
+    if (lines.length === 0) {
+      return "No matches found.";
+    }
+    
+    // Limiter les résultats si nécessaire
+    if (options.maxResults && lines.length > options.maxResults) {
+      const truncated = lines.slice(0, options.maxResults);
+      truncated.push(`\n... (${lines.length - options.maxResults} more results omitted)`);
+      return truncated.join('\n');
+    }
+    
+    return lines.join('\n');
+  } catch (error: any) {
+    throw new Error(`Failed to search in files: ${error.message}`);
   }
 }
 
@@ -862,6 +974,16 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
         inputSchema: zodToJsonSchema(SearchFilesArgsSchema) as ToolInput,
       },
       {
+        name: "search_in_files",
+        description: "Search for text patterns within files recursively. " +
+          "Supports plain text and regular expression searches. Can filter by file patterns, " +
+          "exclude certain files/directories, limit results, and show context lines. " +
+          "Returns matching lines with file paths and line numbers. " +
+          "Automatically excludes common directories like .git and node_modules. " +
+          "Only searches within allowed directories.",
+        inputSchema: zodToJsonSchema(SearchInFilesArgsSchema) as ToolInput,
+      },
+      {
         name: "get_file_info",
         description: "Retrieve detailed metadata about a file or directory. Returns comprehensive " +
           "information including size, creation time, last modified time, permissions, " +
@@ -1085,6 +1207,24 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         const results = await searchFilesByName(validPath, parsed.data.pattern, parsed.data.excludePatterns || []);
         return {
           content: [{ type: "text", text: results.length > 0 ? results.join("\n") : "No matches found" }],
+        };
+      }
+      case "search_in_files": {
+        const parsed = SearchInFilesArgsSchema.safeParse(args);
+        if (!parsed.success) {
+          throw new Error(`Invalid arguments for search_in_files: ${parsed.error}`);
+        }
+        const validPath = await validatePath(parsed.data.path);
+        const result = await searchInFiles(validPath, parsed.data.pattern, {
+          caseInsensitive: parsed.data.caseInsensitive,
+          isRegex: parsed.data.isRegex,
+          includePatterns: parsed.data.includePatterns,
+          excludePatterns: parsed.data.excludePatterns,
+          maxResults: parsed.data.maxResults,
+          contextLines: parsed.data.contextLines
+        });
+        return {
+          content: [{ type: "text", text: result }],
         };
       }
       case "get_file_info": {
